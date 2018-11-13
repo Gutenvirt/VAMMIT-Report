@@ -1,0 +1,373 @@
+clear all
+snapshot erase _all
+
+import excel "DIST18_DISTRICT_AGGREGATION_3YR.xlsx", sheet("DISTRICT_AGG_3YR") firstrow case(lower) clear
+ generate a95l = agg_vam_combined - round((agg_vam_combined_se * round(invttail(n_scores_combined - 1, 0.05/2), .001)), .001)
+ generate a95h = agg_vam_combined + round((agg_vam_combined_se * round(invttail(n_scores_combined - 1, 0.05/2), .001)), .001)
+ generate a68l = agg_vam_combined - round((agg_vam_combined_se * round(invttail(n_scores_combined - 1, 0.32/2), .001)), .001)
+ generate a68h = agg_vam_combined + round((agg_vam_combined_se * round(invttail(n_scores_combined - 1, 0.32/2), .001)), .001)
+ generate dis_rating = ""
+  replace dis_rating = "Highly Effective" if a95l > 0 & a95l != .
+  replace dis_rating = "Unsatisfactory" if a95h < 0 & a95h != .
+  replace dis_rating = "Needs Improvement" if a68h < 0 & a95h >= 0 & a68h != . & a95h != .
+  replace dis_rating = "Effective" if a68h >=0 & a95l <=0 & a68h != . & a95l != .
+ keep district_id dis_rating
+ save "district_ratings.dta", replace
+
+import excel "DIST18_SCHOOL_AGGREGATION_3YR.xlsx", sheet("SCHOOL_AGG_3YR_WVAMGRPS") firstrow case(lower) clear
+ rename agg_vam_combined_catscr sch_rating
+ tostring sch_rating, replace
+ replace sch_rating = "Highly Effective" if sch_rating == "4"
+ replace sch_rating = "Effective" if sch_rating == "3"
+ replace sch_rating = "Needs Improvement" if sch_rating == "2"
+ replace sch_rating = "Unsatisfactory" if sch_rating == "1"
+ keep school_id sch_rating
+ save "school_ratings.dta", replace
+
+import excel "DIST18_TEACHER_AGGREGATION_1YR_1718.XLSX", sheet("TEACHER_AGG_1YR_WVAMGRPS") firstrow case(lower) clear
+ generate year = "py1"
+ keep agg_vam_ela agg_vam_ela_se agg_vam_math agg_vam_math_se agg_vam_combined agg_vam_combined_se year teacher_id
+ save "vam_1y_py1.dta", replace
+
+import excel "DIST18_TEACHER_AGGREGATION_1YR_1617.XLSX", sheet("TEACHER_AGG_1YR_WVAMGRPS") firstrow case(lower) clear
+ generate year = "py2"
+ keep agg_vam_ela agg_vam_ela_se agg_vam_math agg_vam_math_se agg_vam_combined agg_vam_combined_se year teacher_id
+ save "vam_1y_py2.dta", replace
+
+import excel "DIST18_TEACHER_AGGREGATION_1YR_1516.XLSX", sheet("TEACHER_AGG_1YR") firstrow case(lower) clear
+ generate year = "py3"
+ keep agg_vam_ela agg_vam_ela_se agg_vam_math agg_vam_math_se agg_vam_combined agg_vam_combined_se year teacher_id
+ save "vam_1y_py3.dta", replace
+ 
+use "vam_1y_py1.dta", clear
+ append using "vam_1y_py2.dta"
+ append using "vam_1y_py3.dta"
+ rename agg_vam_ela vam_ela_1yr
+ rename agg_vam_ela_se vam_ela_se_1yr
+ rename agg_vam_math vam_math_1yr
+ rename agg_vam_math_se vam_math_se_1yr
+ rename agg_vam_combined agg_vam_1yr
+ rename agg_vam_combined_se agg_vam_1yr_se
+ keep agg_vam_1yr agg_vam_1yr_se vam_ela_1yr vam_ela_se_1yr vam_math_1yr vam_math_se_1yr teacher_id year
+ duplicates drop 
+ reshape wide vam_ela_1yr vam_ela_se_1yr vam_math_1yr vam_math_se_1yr agg_vam_1yr agg_vam_1yr_se, i(teacher_id) j(year, string)
+ save "vam_1y_teacher_aggs.dta", replace
+ 
+import excel "DIST18_TEACHER_ELA_3YR.xlsx", sheet("TEACHER_ELA_3YR") firstrow case(lower) clear
+ keep year teacher_id grade n_meet_expectations pct_meet_expectations t_experience n_scores_vam
+ bys teacher_id: egen tch_exp = max(t_experience)
+  drop t_experience
+ bys teacher_id: egen n_scores_ela_flagler = total(n_scores_vam)
+ generate num = n_meet_expectations * pct_meet_expectations
+ bys teacher_id : egen sum_num = total(num)
+ bys teacher_id : egen sum_count = total(n_meet_expectations )
+ generate pct_met_exp_ela = round(sum_num/sum_count, 1)
+ keep teacher_id pct_met_exp_ela tch_exp n_scores_ela_flagler
+ duplicates drop
+ save "teacher_met_exp_ela.dta", replace
+
+ import excel "DIST18_TEACHER_MATH_3YR.xlsx", sheet("TEACHER_MATH_3YR") firstrow case(lower) clear
+ keep year teacher_id grade n_meet_expectations pct_meet_expectations t_experience n_scores_vam
+ bys teacher_id: egen tch_exp = max(t_experience)
+  drop t_experience
+ bys teacher_id: egen n_scores_math_flagler = total(n_scores_vam)
+ generate num = n_meet_expectations * pct_meet_expectations
+ bys teacher_id : egen sum_num = total(num)
+ bys teacher_id : egen sum_count = total(n_meet_expectations )
+ generate pct_met_exp_math = round(sum_num/sum_count, 1) 
+ keep teacher_id pct_met_exp_math tch_exp n_scores_math_flagler
+ duplicates drop
+ save "teacher_met_exp_math.dta", replace
+
+ *Public released
+import excel "Teacher_Aggregation_3yr_1718_public.xlsx", sheet("TEACHER_AGG_3YR_WVAMGRPS") firstrow case(lower) clear
+ drop if missing(teacher_name)
+ drop if strpos(lower(school_name), "hospital")>0
+ drop if strpos(lower(school_name), "virtual")>0
+ drop if agg_vam_combined_catscr == "*****"
+ duplicates drop count_unique_students agg_vam_ela agg_vam_ela_se n_scores_ela agg_vam_math agg_vam_math_se n_scores_math agg_vam_combined agg_vam_combined_se n_scores_combined, force
+ tab agg_vam_combined_catscr, gen(p_)
+ egen state_p_unsat = mean(p_1)
+ egen state_p_ni = mean(p_2)
+ egen state_p_eff = mean(p_3)
+ egen state_p_hf = mean(p_4)
+ foreach var of varlist state_p* {
+	replace `var' = round(`var' * 100, 1)
+ }
+ keep if district_id == "18"
+ keep school_id state_p*
+ duplicates drop
+ tostring *, replace
+ save "state_percents.dta", replace
+ 
+import excel "DIST18_TEACHER_AGGREGATION_3YR_2018.XLSX", sheet("TEACHER_AGG_3YR_WVAMGRPS") firstrow case(lower) clear
+ generate year = "py1"
+ save "vam_py1.dta", replace
+
+import excel "DIST18_TEACHER_AGGREGATION_3YR_2017.XLSX", sheet("TEACHER_AGG_3YR_WVAMGRPS") firstrow case(lower) clear
+ generate year = "py2"
+ save "vam_py2.dta", replace
+
+import excel "DIST18_TEACHER_AGGREGATION_3YR_2016.XLSX", sheet("TEACHER_AGG_3YR_WVAMGRPS") firstrow case(lower) clear
+ generate year = "py3"
+ save "vam_py3.dta", replace
+
+use "vam_py1.dta", clear
+append using "vam_py2.dta"
+append using "vam_py3.dta"
+
+rename teacher_name teacher_name_full
+replace teacher_name_full = proper(subinstr(teacher_name_full, ",", ", ", .))
+replace school_name = proper(school_name)
+
+generate vam_ela_theta = agg_vam_ela
+ capture replace vam_ela_theta = agg_vam_read if vam_ela_theta == .
+
+generate vam_ela_theta_se = agg_vam_ela_se
+ capture replace vam_ela_theta_se = agg_vam_read_se if vam_ela_theta_se  == .
+
+generate vam_ela_n_scores = n_scores_ela
+ capture replace vam_ela_n_scores = n_students_read if vam_ela_n_scores == .
+
+generate vam_math_theta = agg_vam_math
+generate vam_math_theta_se = agg_vam_math_se
+
+generate vam_math_n_scores = n_scores_math
+ capture replace vam_math_n_scores = n_students_math if vam_math_n_scores == .
+
+generate n_unique = .
+ capture replace n_unique = count_unique_all if n_unique == .
+ capture replace n_unique = count_unique_students if n_unique == .
+ 
+generate m95l = vam_math_theta - round((vam_math_theta_se * round(invttail(vam_math_n_scores - 1, 0.05/2), .001)), .001)
+generate m95h = vam_math_theta + round((vam_math_theta_se * round(invttail(vam_math_n_scores - 1, 0.05/2), .001)), .001)
+
+generate m68l = vam_math_theta - round((vam_math_theta_se * round(invttail(vam_math_n_scores - 1, 0.32/2), .001)), .001)
+generate m68h = vam_math_theta + round((vam_math_theta_se * round(invttail(vam_math_n_scores - 1, 0.32/2), .001)), .001)
+
+generate e95l = vam_ela_theta - round((vam_ela_theta_se * round(invttail(vam_ela_n_scores - 1, 0.05/2), .001)), .001)
+generate e95h = vam_ela_theta + round((vam_ela_theta_se * round(invttail(vam_ela_n_scores - 1, 0.05/2), .001)), .001)
+
+generate e68l = vam_ela_theta - round((vam_ela_theta_se * round(invttail(vam_ela_n_scores - 1, 0.32/2), .001)), .001)
+generate e68h = vam_ela_theta + round((vam_ela_theta_se * round(invttail(vam_ela_n_scores - 1, 0.32/2), .001)), .001)
+
+generate ci95 = string(round((agg_vam_combined_se * round(invttail(n_scores_combined - 1, 0.05/2), .001)), .001), "%04.3f")
+generate ci68 = string(round((agg_vam_combined_se * round(invttail(n_scores_combined - 1, 0.32/2), .001)), .001), "%04.3f")
+
+generate math_rating = ""
+ replace math_rating = "Highly Effective" if m95l > 0 & m95l != .
+ replace math_rating = "Unsatisfactory" if m95h < 0 & m95h != .
+ replace math_rating = "Unsatisfactory" if m68h < 0 & m95h >= 0 & m68h != . & m95h != .
+ replace math_rating = "Effective" if m68h >=0 & m95l <=0 & m68h != . & m95l != .
+ 
+generate ela_rating = ""
+ replace ela_rating = "Highly Effective" if e95l > 0 & e95l != .
+ replace ela_rating = "Unsatisfactory" if e95h < 0 & e95h != .
+ replace ela_rating = "Unsatisfactory" if e68h < 0 & e95h >= 0 & e68h != . & e95h != .
+ replace ela_rating = "Effective" if e68h >=0 & e95l <=0 & e68h != . & e95l != .
+ 
+rename agg_vam_combined_95ll a95l
+rename agg_vam_combined_68ll a68l
+rename agg_vam_combined_68ul a68h
+rename agg_vam_combined_95ul a95h
+rename agg_vam_combined vam_theta
+rename agg_vam_combined_cattxt rating_txt
+rename agg_vam_combined_cat rating_score
+
+keep district_id school_id school_name teacher_id teacher_name_full n_scores_combined vam_theta ///
+	 hoss a95l a68l a68h a95h rating_txt rating_score year n_unique flag* ela_rating math_rating ///
+	 n_scores_ela n_scores_math ci95 ci68 agg_vam_combined_se
+
+tostring hoss, replace
+replace hoss = "WAS" if hoss != "0"
+replace hoss = "WAS NOT" if hoss == "0"
+	 
+snapshot save, label("All Years")
+ keep if year == "py1"
+ merge m:1 school_id using "state_percents.dta", keep(master match) nogen
+ merge m:1 school_id using "school_ratings.dta", keep(master match) nogen
+ merge m:1 district_id using "district_ratings.dta", keep(master match) nogen
+ merge m:1 teacher_id using "teacher_met_exp_ela.dta", keep(master match) nogen
+ merge m:1 teacher_id using "teacher_met_exp_math.dta", keep(master match) nogen
+ merge m:1 teacher_id using "vam_1y_teacher_aggs.dta", keep(master match) nogen
+ 
+ foreach var of varlist n_scores* {
+	replace `var' = . if `var' == 0
+}
+ 
+ generate inc_other_dis_ela = ""
+  replace inc_other_dis_ela = "*" if n_scores_ela != n_scores_ela_flagler
+ generate inc_other_dis_math = ""
+  replace inc_other_dis_math = "*" if n_scores_math != n_scores_math_flagler
+ generate note = ""
+  replace note = "* includes students from other districts" if inc_other_dis_ela == "*" | inc_other_dis_math == "*"
+ 
+ tab rating_score, gen(p_)
+ bys school_name : egen sch_p_unsat = mean(p_1)
+ bys school_name : egen sch_p_ni = mean(p_2)
+ bys school_name : egen sch_p_eff = mean(p_3)
+ bys school_name : egen sch_p_hf = mean(p_4)
+ 
+ egen dis_p_unsat = mean(p_1)
+ egen dis_p_ni = mean(p_2)
+ egen dis_p_eff = mean(p_3)
+ egen dis_p_hf = mean(p_4)
+ egen inc_yrs = rowtotal(flag*)
+ 
+ foreach var of varlist sch_p* dis_p* {
+	replace `var' = round(`var' * 100, 1)
+ }
+  
+ drop p_1 p_2 p_3 p_4
+ generate p_vam = string(vam_theta, "%04.3f")
+ generate p_vam_theta = string(agg_vam_combined_se, "%04.3f")
+ tostring *_rating *_scores_* pct* tch_exp, replace
+ 
+  foreach var of varlist * {
+	capture replace `var' = "" if `var' == "."
+ }
+ 
+ replace math_rating = "NA" if math_rating == ""
+ replace ela_rating = "NA" if ela_rating == ""
+ replace n_scores_math = "NA" if n_scores_math == "0"
+ replace n_scores_ela = "NA" if n_scores_ela == "0"
+ replace pct_met_exp_ela = pct_met_exp_ela + "% FCS Meeting" if pct_met_exp_ela != ""
+ replace pct_met_exp_math = pct_met_exp_math + "% FCS Meeting" if pct_met_exp_math != ""
+ replace tch_exp = "Less than 0" if tch_exp == ""
+ 
+ generate trend_path_pic = "\\VAM Report\\graphs\\" + teacher_id + ".emf"
+* generate trend_path_pic = "\\VAM Report\\graphs\\" + teacher_id + ".emf"
+
+ generate scatter_path_pic = "\\VAM Report\\scatters\\" + teacher_id + ".emf"
+* generate scatter_path_pic = "\\VAM Report\\scatters\\" + teacher_id + ".emf"
+
+ generate pie_path_pic = "\\VAM Report\\pies\\" + teacher_id + ".emf"
+* generate pie_path_pic = "\\VAM Report\\pies\\" + teacher_id + ".emf"
+
+ generate hist_path_pic = "\\VAM Report\\hists\\" + teacher_id + ".emf"
+* generate hist_path_pic = "\\VAM Report\\hists\\" + teacher_id + ".emf"
+ 
+ sort teacher_name_full
+ snapshot save, label("ind_rating_parse")
+  keep if rating_score == 4
+  replace teacher_id = "XXXXX" + ustrright(teacher_id, 4) 
+  export excel using "vam_data_py1_r4.xlsx", firstrow(variables) replace
+  snapshot restore 2
+	
+  keep if rating_score == 3
+  replace teacher_id = "XXXXX" + ustrright(teacher_id, 4) 
+  export excel using "vam_data_py1_r3.xlsx", firstrow(variables) replace
+  snapshot restore 2
+ 
+  keep if rating_score == 2
+  replace teacher_id = "XXXXX" + ustrright(teacher_id, 4)  
+  export excel using "vam_data_py1_r2.xlsx", firstrow(variables) replace
+  snapshot restore 2
+  
+  keep if rating_score == 1
+  replace teacher_id = "XXXXX" + ustrright(teacher_id, 4)  
+  export excel using "vam_data_py1_r1.xlsx", firstrow(variables) replace
+  snapshot restore 2  
+ 
+capture erase "state_percents.dta"	
+capture erase "vam_py1.dta"
+capture erase "vam_py2.dta"
+capture erase "vam_py3.dta"
+capture erase "district_ratings.dta"
+capture erase "school_ratings.dta"
+capture erase "teacher_met_exp_ela.dta"
+capture erase "teacher_met_exp_math.dta"
+capture erase "vam_1y_py1.dta"
+capture erase "vam_1y_py2.dta"
+capture erase "vam_1y_py3.dta"
+capture erase "vam_1y_teacher_aggs.dta"
+
+keep teacher_id rating_score
+duplicates drop
+
+save "master_teacher_list.dta", replace
+ 
+*if generating graphs, comment out 'exit' command.
+*exit
+ 
+snapshot restore 1
+ 
+drop flag* math_rating ela_rating n_scores* ci*
+destring *, replace
+order year, after(school_id)
+duplicates drop
+reshape wide teacher_name_full-n_unique , i(teacher_id school_id) j(year, string)
+
+replace teacher_name_fullpy1 = teacher_name_fullpy2 if missing(teacher_name_fullpy1)
+replace teacher_name_fullpy1 = teacher_name_fullpy3 if missing(teacher_name_fullpy1)
+	drop teacher_name_fullpy3 teacher_name_fullpy2
+
+duplicates tag teacher_id, gen(ucheck)
+egen check2 = rownonmiss(*), strok
+bys teacher_id: egen max_check = max(check2)
+drop if max_check == check2 & ucheck == 1
+duplicates drop teacher_id, force
+
+ 
+local N = _N
+forvalues i = 1/`N' {
+
+	local tch_id = teacher_id[`i']
+	
+	local y95hpy1 = a95hpy1[`i']
+	local y95lpy1 = a95lpy1[`i']
+	local y68hpy1 = a68hpy1[`i']
+	local y68lpy1 = a68lpy1[`i']
+	local vampy1 = vam_thetapy1[`i']
+	local ratingpy1 = rating_txtpy1[`i']
+
+	local y95hpy2 = a95hpy2[`i']
+	local y95lpy2 = a95lpy2[`i']
+	local y68hpy2 = a68hpy2[`i']
+	local y68lpy2 = a68lpy2[`i']
+	local vampy2 = vam_thetapy2[`i']
+	local ratingpy2 = rating_txtpy2[`i']
+	
+	local y95hpy3 = a95hpy3[`i']
+	local y95lpy3 = a95lpy3[`i']
+	local y68hpy3 = a68hpy3[`i']
+	local y68lpy3 = a68lpy3[`i']
+	local vampy3 = vam_thetapy3[`i']
+	local ratingpy3 = rating_txtpy3[`i']	
+	
+	twoway 	(scatteri 2 `y95lpy3' 2 `y95hpy3' 1 `y95hpy3' 1 `y95lpy3', recast(area) color("180 199 231")) ///
+			(scatteri 2 `y68lpy3' 2 `y68hpy3' 1 `y68hpy3' 1 `y68lpy3', recast(area) color("46 117 182")) ///
+			(scatteri 2 `=`vampy3'-.0025' 2 `=`vampy3'+.0025' 1 `=`vampy3'+.0025' 1 `=`vampy3'-.0025', recast(area) color(black)) ///
+			(scatteri 1.5 -1.48 "2014-16", mlabpos(center) mlabcolor(black) msymbol(i) mlabangle(90) mlabsize(large)) ///
+			(scatteri 2.2 `vampy3' "`ratingpy3'", mlabpos(center) mlabcolor(black) msymbol(i) mlabsize(medium)) ///
+			(scatteri 0 `y95lpy2' 0 `y95hpy2' -1 `y95hpy2' -1 `y95lpy2', recast(area) color("180 199 231")) ///
+			(scatteri 0 `y68lpy2' 0 `y68hpy2' -1 `y68hpy2' -1 `y68lpy2', recast(area) color("46 117 182")) ///
+			(scatteri 0 `vampy2' -1 `vampy2', recast(line) color(black)) ///
+			(scatteri 0 `=`vampy2'-.0025' 0 `=`vampy2'+.0025' -1 `=`vampy2'+.0025' -1 `=`vampy2'-.0025', recast(area) color(black)) ///
+			(scatteri -.5 -1.48 "2015-17", mlabpos(center) mlabcolor(black) msymbol(i) mlabangle(90) mlabsize(large)) ///
+			(scatteri 0.2 `vampy2' "`ratingpy2'", mlabpos(center) mlabcolor(black) msymbol(i) mlabsize(medium)) ///
+			(scatteri -2 `y95lpy1' -2 `y95hpy1' -3 `y95hpy1' -3 `y95lpy1', recast(area) color("180 199 231")) ///
+			(scatteri -2 `y68lpy1' -2 `y68hpy1' -3 `y68hpy1' -3 `y68lpy1', recast(area) color("46 117 182")) ///
+			(scatteri -2 `vampy1' -3 `vampy1', recast(line) color(black)) ///	
+			(scatteri -2 `=`vampy1'-.0025' -2 `=`vampy1'+.0025' -3 `=`vampy1'+.0025' -3 `=`vampy1'-.0025', recast(area) color(black)) ///			
+			(scatteri -2.5 -1.48 "2016-18", mlabpos(center) mlabcolor(black) msymbol(i) mlabangle(90) mlabsize(large)) ///			
+			(scatteri -1.8 `vampy1' "`ratingpy1'", mlabpos(center) mlabcolor(black) msymbol(i) mlabsize(medium)) ///			
+			, ///
+				ylabel(-3.5(1)2.5, noticks nolabels nogrid) ///
+				xlabel(-1.5(1)1.5, noticks nolabels nogrid) ///
+				yline(.5, lcolor(gray*.25)) ///
+				yline(-1.5, lcolor(gray*.25)) ///				
+				xline(0, lcolor(red)) ///
+				ysize(3) ///
+				xsize(7.9) ///
+				xtitle("") ///
+				ytitle("") ///
+				graphregion(fcolor(white) color(white) lwidth(large)) ///
+				plotregion( lcolor(black)) ///
+				yscale(noline) ///
+				xscale(noline) ///
+				legend(rows(1) label(1 "95% Confidence Interval") label(2 "68% Confidence Interval") label(3 "Value-Added Score") order(3 2 1))
+				
+	graph export "graphs/`tch_id'.emf",  replace
+	*continue, break
+}
